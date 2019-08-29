@@ -1,4 +1,4 @@
 Lab2
 -------
 
-Monday - 7:30 Meeting
+Monday - 8:30 Meeting
