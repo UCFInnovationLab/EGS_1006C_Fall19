@@ -10,20 +10,18 @@
 
 #include <ti/devices/msp432p4xx/driverlib/driverlib.h>
 
-#include "Library/Reflectance.h"
 #include "Library/Clock.h"
 #include "Library/Bump.h"
 #include "Library/Motor.h"
 #include "Library/Encoder.h"
 #include "Library/Button.h"
 
-#define TARGET_TICKS 180
+#define TURN_TARGET_TICKS 119
+#define DRIVE_TARGET_TICKS 200
+
 
 void Initialize_System();
 
-uint8_t light_data; // QTR-8RC
-uint8_t light_data0;
-int32_t Position; // 332 is right, and -332 is left of center
 uint8_t bump_data;
 uint8_t bump_data0;
 uint8_t bump_data2;
@@ -37,21 +35,23 @@ typedef enum
 {
     START = 0,
     WAIT,
-    GO,
-    GO2,
-    BUMMPED1a,
-    BUMMPED1b,
-    DRIVE,
-    STOP
+    SETUP_DRIVE1,
+    DRIVE1,
+    STOP_DRIVE1,
+    SETUP_TURN1,
+    TURN1,
+    STOP_TURN1,
+    ALL_DONE
 } my_state_t;
 
 my_state_t state = START;
 
 int main(void)
+
 {
     bool left_done, right_done;
 
-    int left_encoder_pos, right_encoder_pos;
+    int left_encoder_zero_pos, right_encoder_zero_pos;
 
     Initialize_System();
 
@@ -60,14 +60,6 @@ int main(void)
 
     while (1)
     {
-        // Read Reflectance data into a byte.
-        // Each bit corresponds to a sensor on the light bar
-        light_data = Reflectance_Read(1000);
-        light_data0 = LIGHT_BAR(light_data,0);
-
-        // Convert light_data into a Position using a weighted sum
-        Position = Reflectance_Position(light_data);
-
         // Read Bump data into a byte
         // Lower six bits correspond to the six bump sensors
         // put into individual variables so we can view it in GC
@@ -79,7 +71,7 @@ int main(void)
         // Switch to state "STOP" if pressed
         if (button_S2_pressed()) 
         {
-            state = STOP;
+            state = ALL_DONE;
         }
 
         //-----------------------------------
@@ -95,13 +87,55 @@ int main(void)
         case WAIT:
             if (button_S1_pressed()) 
             {
-                state = GO;
+                state = SETUP_DRIVE1;
             }
         break;
 
-        case GO:
-            left_encoder_pos = get_left_motor_count();
-            right_encoder_pos = get_right_motor_count();
+
+        case SETUP_DRIVE1:
+            left_encoder_zero_pos = get_left_motor_count();
+            right_encoder_zero_pos = get_right_motor_count();
+
+            set_left_motor_direction(true);
+            set_right_motor_direction(true);
+
+            left_done = false;
+            right_done = false;
+
+            state = DRIVE1;
+        break;
+
+        case DRIVE1:
+            if (!left_done)
+            {
+                set_left_motor_pwm(.1);
+                left_done = (get_left_motor_count() - left_encoder_zero_pos) > DRIVE_TARGET_TICKS;
+            }
+            else
+            {
+                set_left_motor_pwm(0);
+            }
+
+            if(!right_done)
+            {
+                set_right_motor_pwm(.1);
+                right_done = (get_right_motor_count() - right_encoder_zero_pos) > DRIVE_TARGET_TICKS;
+            }
+            else
+            {
+                set_right_motor_pwm(0);
+            }
+
+            if (left_done && right_done) {
+                set_left_motor_pwm(0);          // Stop all motors
+                set_right_motor_pwm(0);
+                state = SETUP_TURN1;
+            }
+        break;
+
+        case SETUP_TURN1:
+            left_encoder_zero_pos = get_left_motor_count();
+            right_encoder_zero_pos = get_right_motor_count();
 
             set_left_motor_direction(true);
             set_right_motor_direction(false);
@@ -109,63 +143,43 @@ int main(void)
             left_done = false;
             right_done = false;
 
-            state = DRIVE;
+            state = TURN1;
         break;
 
-        // case GO2:
-        //     if (bump_data0) state = BUMMPED1a;
 
-        //     done = rotate_motors_by_counts(CONTINUOUS, .25, 360, 0);  // Continue to rotate until done
-
-        //     if (done) state = STOP;
-        // break;
-
-        // case BUMMPED1a:
-        //     set_left_motor_pwm(0);          // Stop all motors
-        //     set_right_motor_pwm(0);
-
-        //     rotate_motors_by_counts(INITIAL, .25, -100, 0);
-        //     state = BUMMPED1b;
-        // break;
-
-        // case BUMMPED1b:
-        //    done = rotate_motors_by_counts(CONTINUOUS, .25, -100, 0);
-
-        //    if (done) state = DRIVE;
-        // break;
-
-        case DRIVE:
+        case TURN1:
             if (!left_done)
             {
                 set_left_motor_pwm(.1);
-                left_done = (get_left_motor_count() - left_encoder_pos) > TARGET_TICKS;
+                left_done = (get_left_motor_count() - left_encoder_zero_pos) > TURN_TARGET_TICKS;
             }
             else
             {
                 set_left_motor_pwm(0);
             }
-            
+
             if(!right_done)
             {
                 set_right_motor_pwm(.1);
-                right_done = (get_right_motor_count() - right_encoder_pos) < -TARGET_TICKS;
+                right_done = (get_right_motor_count() - right_encoder_zero_pos) < -TURN_TARGET_TICKS;
             }
             else
             {
                 set_right_motor_pwm(0);
             }
-            
-            if (left_done && right_done) 
-                state = STOP;
+
+            if (left_done && right_done) {
+                set_left_motor_pwm(0);          // Stop all motors
+                set_right_motor_pwm(0);
+                state = ALL_DONE;
+            }
         break;
 
-        case STOP:
-            set_left_motor_pwm(0);          // Stop all motors
-            set_right_motor_pwm(0);
-
+        case ALL_DONE:
             state = WAIT;
         break;
-        }
+
+        } // end of case
 
         Clock_Delay1ms(10);
     }
