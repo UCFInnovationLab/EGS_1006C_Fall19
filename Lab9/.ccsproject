@@ -13,7 +13,7 @@
 	<ignoreDefaultDeviceSettings value="true"/>
 	<ignoreDefaultCCSSettings value="true"/>
 	<templateProperties value="id=timer_a_pwm_mode_MSP_EXP432P401R_nortos_ccs.projectspec.timer_a_pwm_mode_MSP_EXP432P401R_nortos_ccs,buildProfile=release,isHybrid=true,"/>
-	<origin value="/Users/harper/Downloads/EGS_1006C_Fall19/Lab8"/>
+	<origin value="/Users/harper/tmp/RSLK_Debug"/>
 	<filesToOpen value=""/>
 	<isTargetManual value="false"/>
 </projectOptions>
